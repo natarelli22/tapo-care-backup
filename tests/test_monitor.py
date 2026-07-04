@@ -425,3 +425,61 @@ def test_run_watch_once_combines_multiple_notified_clips_into_grid(tmp_path, mon
     assert f"MEDIA:{grid}" in message
     assert "first.ts" in message
     assert "second.ts" in message
+
+
+def test_grid_attachment_includes_all_notified_clips_even_when_message_list_is_limited(tmp_path, monkeypatch):
+    paths = WatchPaths(
+        env_file=tmp_path / "missing.env",
+        session_file=tmp_path / "session.json",
+        state_file=tmp_path / "state.json",
+        output_dir=tmp_path / "out",
+    )
+    settings = WatchSettings(
+        bootstrap_mode="download_existing",
+        attachment_format="source",
+        max_attachments=12,
+        grid_attachments=True,
+    )
+    candidates = [
+        DownloadCandidate(
+            "cam",
+            f"2026-06-20 12:{index:02d}:00",
+            f"https://example.test/{index}.ts",
+            None,
+            f"cam/2026-06-20/{index}.ts",
+            ("MOTION",),
+        )
+        for index in range(27)
+    ]
+    grid = tmp_path / "grid.mp4"
+    captured = {}
+
+    class FakeCare:
+        def __init__(self, session):
+            pass
+
+        def download_bytes(self, url):
+            return url.encode()
+
+    monkeypatch.setattr(monitor, "load_or_login_session", lambda paths: object())
+    monkeypatch.setattr(monitor, "list_camera_devices", lambda session, paths: [monitor.TapoDevice("device-1", "cam", "SMART.IPCAMERA")])
+    monkeypatch.setattr(monitor, "iter_candidates_for_devices", lambda session, devices, settings: [("device-1", candidate) for candidate in candidates])
+    monkeypatch.setattr(monitor, "TapoCareClient", FakeCare)
+
+    def fake_grid(clips, tile_width, tile_height):
+        captured["grid_clips"] = clips
+        return grid
+
+    monkeypatch.setattr(monitor, "prepare_grid_attachment_path", fake_grid)
+
+    result = monitor.run_watch_once(paths, settings)
+
+    assert result is not None
+    assert len(result.saved) == 27
+    assert len(captured["grid_clips"]) == 27
+    assert [clip.path.name for clip in captured["grid_clips"]] == [f"{index}.ts" for index in range(27)]
+    message = format_slack_message(result, max_attachments=12)
+    assert message.count("MEDIA:") == 1
+    assert f"MEDIA:{grid}" in message
+    assert "ほか15件もグリッド内に含めて保存済みです。" in message
+    assert "12.ts" not in message

@@ -356,8 +356,9 @@ def prepare_grid_attachment_path(clips: Sequence[SavedClip], tile_width: int = 4
     """Create a single Slack-friendly MP4 grid for multiple notification clips.
 
     The original per-camera backups remain untouched. The grid is a derived
-    notification artifact: video-only, H.264/yuv420p, and bounded to the first
-    notification clips already selected by ``TAPO_WATCH_MAX_ATTACHMENTS``.
+    notification artifact: video-only, H.264/yuv420p, and includes every
+    notification clip passed by the caller. ``TAPO_WATCH_MAX_ATTACHMENTS`` only
+    limits the Slack text list and individual-attachment fallback.
     """
     if len(clips) < 2:
         return None
@@ -499,7 +500,7 @@ def run_watch_once(paths: WatchPaths | None = None, settings: WatchSettings | No
         saved = remuxed
     combined_attachment = None
     if settings.grid_attachments and settings.max_attachments > 0:
-        grid_clips = [clip for clip in saved if clip.notify][: settings.max_attachments]
+        grid_clips = [clip for clip in saved if clip.notify]
         combined_attachment = prepare_grid_attachment_path(grid_clips, settings.grid_tile_width, settings.grid_tile_height)
     state["bootstrapped"] = True
     save_state(paths.state_file, state)
@@ -539,8 +540,11 @@ def format_slack_message(result: WatchResult, max_attachments: int = 3, notify_b
         lines.append(f"- {clip.event_local_time} / {clip.device_alias}{event_part} / {clip.path.name}")
     remaining = len(notify_clips) - max_attachments
     if remaining > 0:
-        lines.append(f"ほか{remaining}件はローカルに保存済みです。")
-    if result.combined_attachment and len(attachment_clips) > 1:
+        if result.combined_attachment:
+            lines.append(f"ほか{remaining}件もグリッド内に含めて保存済みです。")
+        else:
+            lines.append(f"ほか{remaining}件はローカルに保存済みです。")
+    if result.combined_attachment and len(notify_clips) > 1:
         lines.append(f"MEDIA:{result.combined_attachment}")
     else:
         for clip in attachment_clips:
