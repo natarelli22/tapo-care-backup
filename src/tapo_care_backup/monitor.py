@@ -513,26 +513,6 @@ def run_watch_once(paths: WatchPaths | None = None, settings: WatchSettings | No
     notification_filter = effective_notify_event_types(settings)
 
     state = load_state(paths.state_file)
-    if settings.notify_clips_per_run:
-        before_pending = list(state.get(_PENDING_NOTIFICATIONS_KEY, []))
-        pending_saved = _drain_pending_notifications(state, settings.notify_clips_per_run)
-        if pending_saved:
-            if settings.attachment_format == "mp4" and settings.max_attachments > 0:
-                pending_saved = [
-                    SavedClip(
-                        clip.device_alias,
-                        clip.event_local_time,
-                        prepare_attachment_path(clip.path, settings.attachment_format),
-                        clip.clip_id,
-                        clip.event_types,
-                        clip.notify,
-                    )
-                    for clip in pending_saved
-                ]
-            save_state(paths.state_file, state)
-            return WatchResult(bootstrapped=False, checked_candidates=0, saved=pending_saved, notification_filter=notification_filter)
-        if before_pending != state.get(_PENDING_NOTIFICATIONS_KEY, []):
-            save_state(paths.state_file, state)
 
     session = load_or_login_session(paths)
     if session is None:

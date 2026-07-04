@@ -457,7 +457,7 @@ def test_run_watch_once_downloads_all_new_clips_but_drains_notifications_one_per
     assert format_slack_message(fourth_result, max_attachments=1) == ""
 
 
-def test_run_watch_once_drains_existing_pending_before_tapo_api_calls(tmp_path, monkeypatch):
+def test_run_watch_once_still_polls_tapo_before_draining_existing_pending(tmp_path, monkeypatch):
     paths = WatchPaths(
         env_file=tmp_path / "missing.env",
         session_file=tmp_path / "session.json",
@@ -484,14 +484,24 @@ def test_run_watch_once_drains_existing_pending_before_tapo_api_calls(tmp_path, 
         },
     )
     settings = WatchSettings(bootstrap_mode="download_existing", attachment_format="source", max_attachments=1, notify_clips_per_run=1)
+    calls = {"list": 0, "candidates": 0}
+
+    def fake_list(session, paths):
+        calls["list"] += 1
+        return [monitor.TapoDevice("device-1", "cam", "SMART.IPCAMERA")]
+
+    def fake_candidates(session, devices, settings):
+        calls["candidates"] += 1
+        return []
 
     monkeypatch.setattr(monitor, "load_or_login_session", lambda paths: object())
-    monkeypatch.setattr(monitor, "list_camera_devices", lambda session, paths: pytest.fail("pending queue should drain before Tapo API calls"))
-    monkeypatch.setattr(monitor, "iter_candidates_for_devices", lambda session, devices, settings: pytest.fail("pending queue should drain before Tapo API calls"))
+    monkeypatch.setattr(monitor, "list_camera_devices", fake_list)
+    monkeypatch.setattr(monitor, "iter_candidates_for_devices", fake_candidates)
 
     result = monitor.run_watch_once(paths, settings)
 
     assert result is not None
+    assert calls == {"list": 1, "candidates": 1}
     assert [clip.path for clip in result.saved] == [existing]
     assert load_state(paths.state_file)["pending_notifications"] == []
 
