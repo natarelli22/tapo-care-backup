@@ -33,6 +33,7 @@ _EVENT_TYPE_ALIASES = {
     "動体": "MOTION",
 }
 _EVENT_TYPE_LABELS = {"PD": "人物検知", "MOTION": "モーション"}
+_PENDING_NOTIFICATIONS_KEY = "pending_notifications"
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class WatchSettings:
     grid_attachments: bool = False
     grid_tile_width: int = 480
     grid_tile_height: int = 270
+    notify_clips_per_run: int | None = None
     device_id: str | None = None
 
 
@@ -153,6 +155,17 @@ def _env_positive_int(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
+def _env_optional_positive_int(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 def effective_notify_event_types(settings: WatchSettings) -> tuple[str, ...] | None:
     """Return outbound notification filter after mode-level overrides.
 
@@ -184,17 +197,19 @@ def settings_from_env() -> WatchSettings:
         grid_attachments=grid_attachments,
         grid_tile_width=_env_positive_int("TAPO_WATCH_GRID_TILE_WIDTH", 480),
         grid_tile_height=_env_positive_int("TAPO_WATCH_GRID_TILE_HEIGHT", 270),
+        notify_clips_per_run=_env_optional_positive_int("TAPO_WATCH_NOTIFY_CLIPS_PER_RUN"),
         device_id=os.environ.get("TAPO_WATCH_DEVICE_ID") or None,
     )
 
 
 def load_state(path: Path) -> dict:
     if not path.exists():
-        return {"version": 1, "bootstrapped": False, "seen": {}}
+        return {"version": 1, "bootstrapped": False, "seen": {}, _PENDING_NOTIFICATIONS_KEY: []}
     data = json.loads(path.read_text(encoding="utf-8"))
     data.setdefault("version", 1)
     data.setdefault("bootstrapped", False)
     data.setdefault("seen", {})
+    data.setdefault(_PENDING_NOTIFICATIONS_KEY, [])
     return data
 
 
@@ -352,6 +367,71 @@ def _grid_filter(count: int, tile_width: int, tile_height: int) -> str:
     return ";".join(filters)
 
 
+def _pending_item_from_clip(clip: SavedClip) -> dict[str, object]:
+    return {
+        "device_alias": clip.device_alias,
+        "event_local_time": clip.event_local_time,
+        "path": str(clip.path),
+        "clip_id": clip.clip_id,
+        "event_types": list(clip.event_types),
+    }
+
+
+def _clip_from_pending_item(item: Mapping[str, object]) -> SavedClip | None:
+    path_value = item.get("path")
+    if not isinstance(path_value, str):
+        return None
+    path = Path(path_value)
+    if not path.exists():
+        return None
+    device_alias = item.get("device_alias")
+    event_local_time = item.get("event_local_time")
+    clip_id = item.get("clip_id")
+    event_types = item.get("event_types")
+    return SavedClip(
+        device_alias if isinstance(device_alias, str) else "camera",
+        event_local_time if isinstance(event_local_time, str) else "",
+        path,
+        clip_id if isinstance(clip_id, str) else hashlib.sha256(path_value.encode("utf-8")).hexdigest(),
+        tuple(str(event_type) for event_type in event_types) if isinstance(event_types, list) else (),
+        True,
+    )
+
+
+def _enqueue_pending_notifications(state: dict, clips: Sequence[SavedClip]) -> None:
+    queue = state.setdefault(_PENDING_NOTIFICATIONS_KEY, [])
+    if not isinstance(queue, list):
+        queue = []
+        state[_PENDING_NOTIFICATIONS_KEY] = queue
+    queued_ids = {item.get("clip_id") for item in queue if isinstance(item, dict)}
+    for clip in clips:
+        if not clip.notify or clip.clip_id in queued_ids:
+            continue
+        queue.append(_pending_item_from_clip(clip))
+        queued_ids.add(clip.clip_id)
+
+
+def _drain_pending_notifications(state: dict, limit: int) -> list[SavedClip]:
+    queue = state.setdefault(_PENDING_NOTIFICATIONS_KEY, [])
+    if not isinstance(queue, list):
+        state[_PENDING_NOTIFICATIONS_KEY] = []
+        return []
+    drained: list[SavedClip] = []
+    remaining: list[object] = []
+    for item in queue:
+        if not isinstance(item, dict):
+            continue
+        clip = _clip_from_pending_item(item)
+        if clip is None:
+            continue
+        if len(drained) < limit:
+            drained.append(clip)
+        else:
+            remaining.append(item)
+    state[_PENDING_NOTIFICATIONS_KEY] = remaining
+    return drained
+
+
 def prepare_grid_attachment_path(clips: Sequence[SavedClip], tile_width: int = 480, tile_height: int = 270) -> Path | None:
     """Create a single Slack-friendly MP4 grid for multiple notification clips.
 
@@ -432,12 +512,33 @@ def run_watch_once(paths: WatchPaths | None = None, settings: WatchSettings | No
     settings = settings or settings_from_env()
     notification_filter = effective_notify_event_types(settings)
 
+    state = load_state(paths.state_file)
+    if settings.notify_clips_per_run:
+        before_pending = list(state.get(_PENDING_NOTIFICATIONS_KEY, []))
+        pending_saved = _drain_pending_notifications(state, settings.notify_clips_per_run)
+        if pending_saved:
+            if settings.attachment_format == "mp4" and settings.max_attachments > 0:
+                pending_saved = [
+                    SavedClip(
+                        clip.device_alias,
+                        clip.event_local_time,
+                        prepare_attachment_path(clip.path, settings.attachment_format),
+                        clip.clip_id,
+                        clip.event_types,
+                        clip.notify,
+                    )
+                    for clip in pending_saved
+                ]
+            save_state(paths.state_file, state)
+            return WatchResult(bootstrapped=False, checked_candidates=0, saved=pending_saved, notification_filter=notification_filter)
+        if before_pending != state.get(_PENDING_NOTIFICATIONS_KEY, []):
+            save_state(paths.state_file, state)
+
     session = load_or_login_session(paths)
     if session is None:
         # Cron-friendly: stay silent until credentials or a session token is configured.
         return None
 
-    state = load_state(paths.state_file)
     devices = list_camera_devices(session, paths)
     if settings.device_id:
         devices = [d for d in devices if d.device_id == settings.device_id]
@@ -487,6 +588,9 @@ def run_watch_once(paths: WatchPaths | None = None, settings: WatchSettings | No
             "size": out_path.stat().st_size if out_path.exists() else None,
         }
         saved.append(SavedClip(candidate.device_alias, candidate.event_local_time, out_path, clip_id, candidate.event_types, should_notify))
+    if settings.notify_clips_per_run:
+        _enqueue_pending_notifications(state, saved)
+        saved = _drain_pending_notifications(state, settings.notify_clips_per_run)
     if settings.attachment_format == "mp4" and settings.max_attachments > 0:
         remuxed: list[SavedClip] = []
         attachment_count = 0
