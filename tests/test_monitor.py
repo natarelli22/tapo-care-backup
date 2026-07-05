@@ -128,13 +128,19 @@ def test_settings_from_env_parses_grid_attachment_flag(monkeypatch):
 
 def test_settings_from_env_parses_notify_clips_per_run(monkeypatch):
     monkeypatch.delenv("TAPO_WATCH_NOTIFY_CLIPS_PER_RUN", raising=False)
+    monkeypatch.delenv("TAPO_WATCH_NOTIFY_QUEUE_POLICY", raising=False)
     assert settings_from_env().notify_clips_per_run is None
+    assert settings_from_env().notify_queue_policy == "fifo"
 
     monkeypatch.setenv("TAPO_WATCH_NOTIFY_CLIPS_PER_RUN", "1")
+    monkeypatch.setenv("TAPO_WATCH_NOTIFY_QUEUE_POLICY", "latest")
     assert settings_from_env().notify_clips_per_run == 1
+    assert settings_from_env().notify_queue_policy == "latest"
 
     monkeypatch.setenv("TAPO_WATCH_NOTIFY_CLIPS_PER_RUN", "0")
+    monkeypatch.setenv("TAPO_WATCH_NOTIFY_QUEUE_POLICY", "oldest")
     assert settings_from_env().notify_clips_per_run is None
+    assert settings_from_env().notify_queue_policy == "fifo"
 
 
 def test_settings_from_env_grid_mode_notifies_all_even_with_person_filter(monkeypatch):
@@ -455,6 +461,48 @@ def test_run_watch_once_downloads_all_new_clips_but_drains_notifications_one_per
     assert fourth_result is not None
     assert fourth_result.saved == []
     assert format_slack_message(fourth_result, max_attachments=1) == ""
+
+
+def test_run_watch_once_latest_queue_policy_drops_stale_pending_notifications(tmp_path, monkeypatch):
+    paths = WatchPaths(
+        env_file=tmp_path / "missing.env",
+        session_file=tmp_path / "session.json",
+        state_file=tmp_path / "state.json",
+        output_dir=tmp_path / "out",
+    )
+    settings = WatchSettings(
+        bootstrap_mode="download_existing",
+        attachment_format="source",
+        max_attachments=1,
+        notify_clips_per_run=1,
+        notify_queue_policy="latest",
+    )
+    candidates = [
+        DownloadCandidate("cam", "2026-06-20 12:01:00", "https://example.test/1.ts", None, "cam/2026-06-20/1.ts", ("MOTION",)),
+        DownloadCandidate("cam", "2026-06-20 12:02:00", "https://example.test/2.ts", None, "cam/2026-06-20/2.ts", ("MOTION",)),
+        DownloadCandidate("cam", "2026-06-20 12:03:00", "https://example.test/3.ts", None, "cam/2026-06-20/3.ts", ("MOTION",)),
+    ]
+
+    class FakeCare:
+        def __init__(self, session):
+            pass
+
+        def download_bytes(self, url):
+            return url.encode()
+
+    monkeypatch.setattr(monitor, "load_or_login_session", lambda paths: object())
+    monkeypatch.setattr(monitor, "list_camera_devices", lambda session, paths: [monitor.TapoDevice("device-1", "cam", "SMART.IPCAMERA")])
+    monkeypatch.setattr(monitor, "iter_candidates_for_devices", lambda session, devices, settings: [("device-1", candidate) for candidate in candidates])
+    monkeypatch.setattr(monitor, "TapoCareClient", FakeCare)
+
+    result = monitor.run_watch_once(paths, settings)
+
+    assert result is not None
+    assert [clip.path.name for clip in result.saved] == ["3.ts"]
+    state = load_state(paths.state_file)
+    assert len(state["seen"]) == 3
+    assert state["pending_notifications"] == []
+    assert all((paths.output_dir / candidate.relative_path).exists() for candidate in candidates)
 
 
 def test_run_watch_once_still_polls_tapo_before_draining_existing_pending(tmp_path, monkeypatch):

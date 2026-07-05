@@ -57,6 +57,7 @@ class WatchSettings:
     grid_tile_width: int = 480
     grid_tile_height: int = 270
     notify_clips_per_run: int | None = None
+    notify_queue_policy: str = "fifo"
     device_id: str | None = None
 
 
@@ -166,6 +167,13 @@ def _env_optional_positive_int(name: str) -> int | None:
     return value if value > 0 else None
 
 
+def _env_notify_queue_policy() -> str:
+    value = os.environ.get("TAPO_WATCH_NOTIFY_QUEUE_POLICY", "fifo").strip().lower()
+    if value in {"fifo", "latest"}:
+        return value
+    return "fifo"
+
+
 def effective_notify_event_types(settings: WatchSettings) -> tuple[str, ...] | None:
     """Return outbound notification filter after mode-level overrides.
 
@@ -198,6 +206,7 @@ def settings_from_env() -> WatchSettings:
         grid_tile_width=_env_positive_int("TAPO_WATCH_GRID_TILE_WIDTH", 480),
         grid_tile_height=_env_positive_int("TAPO_WATCH_GRID_TILE_HEIGHT", 270),
         notify_clips_per_run=_env_optional_positive_int("TAPO_WATCH_NOTIFY_CLIPS_PER_RUN"),
+        notify_queue_policy=_env_notify_queue_policy(),
         device_id=os.environ.get("TAPO_WATCH_DEVICE_ID") or None,
     )
 
@@ -411,11 +420,23 @@ def _enqueue_pending_notifications(state: dict, clips: Sequence[SavedClip]) -> N
         queued_ids.add(clip.clip_id)
 
 
-def _drain_pending_notifications(state: dict, limit: int) -> list[SavedClip]:
+def _drain_pending_notifications(state: dict, limit: int, queue_policy: str = "fifo") -> list[SavedClip]:
     queue = state.setdefault(_PENDING_NOTIFICATIONS_KEY, [])
     if not isinstance(queue, list):
         state[_PENDING_NOTIFICATIONS_KEY] = []
         return []
+    if queue_policy == "latest":
+        clips: list[SavedClip] = []
+        for item in queue:
+            if not isinstance(item, dict):
+                continue
+            clip = _clip_from_pending_item(item)
+            if clip is None:
+                continue
+            clips.append(clip)
+        clips.sort(key=lambda clip: clip.event_local_time, reverse=True)
+        state[_PENDING_NOTIFICATIONS_KEY] = []
+        return clips[:limit]
     drained: list[SavedClip] = []
     remaining: list[object] = []
     for item in queue:
@@ -570,7 +591,7 @@ def run_watch_once(paths: WatchPaths | None = None, settings: WatchSettings | No
         saved.append(SavedClip(candidate.device_alias, candidate.event_local_time, out_path, clip_id, candidate.event_types, should_notify))
     if settings.notify_clips_per_run:
         _enqueue_pending_notifications(state, saved)
-        saved = _drain_pending_notifications(state, settings.notify_clips_per_run)
+        saved = _drain_pending_notifications(state, settings.notify_clips_per_run, settings.notify_queue_policy)
     if settings.attachment_format == "mp4" and settings.max_attachments > 0:
         remuxed: list[SavedClip] = []
         attachment_count = 0
