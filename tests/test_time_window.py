@@ -40,3 +40,17 @@ def test_build_time_window_auto_detect_from_env():
             os.environ["TZ"] = old_tz
         else:
             os.environ.pop("TZ", None)
+
+
+def test_resolve_timezone_from_supervisor_token(monkeypatch=None):
+    from unittest.mock import patch, MagicMock
+    import io
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = io.BytesIO(b'{"time_zone": "America/Sao_Paulo"}')
+
+    with patch.dict(os.environ, {"SUPERVISOR_TOKEN": "mock_token", "TZ": "UTC"}):
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            tz = resolve_timezone()
+            assert tz == ZoneInfo("America/Sao_Paulo")
+

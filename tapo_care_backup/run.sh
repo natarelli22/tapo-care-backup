@@ -18,10 +18,34 @@ DATE_SUBFOLDERS=$(jq -r '.date_subfolders // true' "$CONFIG_PATH")
 DEFAULT_PATH=$(jq -r '.default_backup_path // "/media/tapo_care"' "$CONFIG_PATH")
 CAMERAS_JSON=$(jq -c '.cameras // []' "$CONFIG_PATH")
 
-# Detect Home Assistant timezone from container environment (Supervisor passes TZ)
-TIMEZONE="${TZ}"
+# Detect Home Assistant timezone:
+# 1. Query Home Assistant Core / Supervisor API using SUPERVISOR_TOKEN
+TIMEZONE=""
+if [ -n "$SUPERVISOR_TOKEN" ]; then
+    echo "[INFO] Fetching configured timezone from Home Assistant Core API..."
+    HA_TZ=$(curl -s -f -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" http://supervisor/core/api/config 2>/dev/null | jq -r '.time_zone // empty' 2>/dev/null || true)
+    if [ -n "$HA_TZ" ] && [ "$HA_TZ" != "null" ]; then
+        TIMEZONE="$HA_TZ"
+    fi
+    if [ -z "$TIMEZONE" ]; then
+        SUPERVISOR_TZ=$(curl -s -f -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" http://supervisor/info 2>/dev/null | jq -r '.data.timezone // empty' 2>/dev/null || true)
+        if [ -n "$SUPERVISOR_TZ" ] && [ "$SUPERVISOR_TZ" != "null" ]; then
+            TIMEZONE="$SUPERVISOR_TZ"
+        fi
+    fi
+fi
+
+# 2. Check environment variable TZ if provided and not UTC
+if [ -z "$TIMEZONE" ] && [ -n "$TZ" ] && [ "$TZ" != "UTC" ]; then
+    TIMEZONE="${TZ}"
+fi
+
+# 3. Check /etc/timezone or /etc/localtime
 if [ -z "$TIMEZONE" ] && [ -f /etc/timezone ]; then
-    TIMEZONE=$(cat /etc/timezone | tr -d ' \r\n')
+    ETC_TZ=$(cat /etc/timezone | tr -d ' \r\n')
+    if [ -n "$ETC_TZ" ] && [ "$ETC_TZ" != "UTC" ]; then
+        TIMEZONE="$ETC_TZ"
+    fi
 fi
 if [ -z "$TIMEZONE" ] && [ -L /etc/localtime ]; then
     REAL_TZ=$(readlink -f /etc/localtime 2>/dev/null || true)
@@ -33,7 +57,7 @@ if [ -z "$TIMEZONE" ]; then
     TIMEZONE=$(jq -r '.timezone // empty' "$CONFIG_PATH" 2>/dev/null || true)
 fi
 if [ -z "$TIMEZONE" ]; then
-    TIMEZONE="UTC"
+    TIMEZONE="${TZ:-UTC}"
 fi
 
 if [ -z "$EMAIL" ] || [ -z "$PASSWORD" ]; then

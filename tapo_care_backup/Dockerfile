@@ -14,7 +14,8 @@ RUN apk add --no-cache \
     ffmpeg \
     bash \
     jq \
-    tzdata
+    tzdata \
+    curl
 
 # Copy and install python package
 COPY app /app

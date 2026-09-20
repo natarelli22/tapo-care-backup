@@ -23,25 +23,49 @@ def resolve_timezone(timezone_name: str | None = None) -> ZoneInfo:
         except Exception:
             pass
 
-    # 1. $TZ environment variable
+    # 1. Query Home Assistant Core / Supervisor API if running inside an add-on
+    supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+    if supervisor_token:
+        for url in ("http://supervisor/core/api/config", "http://supervisor/info"):
+            try:
+                import json
+                import urllib.request
+
+                req = urllib.request.Request(
+                    url,
+                    headers={"Authorization": f"Bearer {supervisor_token}"},
+                )
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    payload = json.loads(resp.read().decode())
+                    candidate = (
+                        payload.get("time_zone")
+                        or payload.get("timezone")
+                        or payload.get("data", {}).get("timezone")
+                    )
+                    if candidate:
+                        return ZoneInfo(str(candidate))
+            except Exception:
+                pass
+
+    # 2. $TZ environment variable
     tz_env = os.environ.get("TZ")
-    if tz_env:
+    if tz_env and tz_env.strip() != "UTC":
         try:
             return ZoneInfo(tz_env.strip())
         except Exception:
             pass
 
-    # 2. /etc/timezone
+    # 3. /etc/timezone
     if os.path.isfile("/etc/timezone"):
         try:
             with open("/etc/timezone", "r", encoding="utf-8") as fp:
                 val = fp.read().strip()
-                if val:
+                if val and val != "UTC":
                     return ZoneInfo(val)
         except Exception:
             pass
 
-    # 3. /etc/localtime symlink
+    # 4. /etc/localtime symlink
     if os.path.islink("/etc/localtime"):
         try:
             real_path = os.path.realpath("/etc/localtime")
@@ -51,7 +75,7 @@ def resolve_timezone(timezone_name: str | None = None) -> ZoneInfo:
         except Exception:
             pass
 
-    # 4. Local system timezone via datetime
+    # 5. Local system timezone via datetime
     try:
         local_tz = datetime.now().astimezone().tzinfo
         if local_tz is not None:
@@ -61,6 +85,12 @@ def resolve_timezone(timezone_name: str | None = None) -> ZoneInfo:
             return local_tz  # type: ignore[return-value]
     except Exception:
         pass
+
+    if tz_env:
+        try:
+            return ZoneInfo(tz_env.strip())
+        except Exception:
+            pass
 
     return ZoneInfo("UTC")
 
