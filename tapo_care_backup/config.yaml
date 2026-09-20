@@ -1,6 +1,6 @@
 name: "Tapo Care Backup"
 description: "Automatically backup Tapo Care cloud recordings, convert to MP4 and generate thumbnails"
-version: "1.1.5"
+version: "1.1.6"
 slug: "tapo_care_backup"
 init: false
 arch:
