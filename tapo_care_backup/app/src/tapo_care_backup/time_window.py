@@ -23,7 +23,20 @@ def resolve_timezone(timezone_name: str | None = None) -> ZoneInfo:
         except Exception:
             pass
 
-    # 1. Query Home Assistant Core / Supervisor API if running inside an add-on
+    # 1. Direct read from Home Assistant Core storage (/config/.storage/core.config)
+    if os.path.isfile("/config/.storage/core.config"):
+        try:
+            import json
+
+            with open("/config/.storage/core.config", "r", encoding="utf-8") as fp:
+                data = json.load(fp)
+                ha_tz = data.get("data", {}).get("time_zone")
+                if ha_tz:
+                    return ZoneInfo(str(ha_tz))
+        except Exception:
+            pass
+
+    # 2. Query Home Assistant Core / Supervisor API if running inside an add-on
     supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
     if supervisor_token:
         for url in ("http://supervisor/core/api/config", "http://supervisor/info"):

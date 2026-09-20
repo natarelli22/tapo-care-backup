@@ -54,3 +54,14 @@ def test_resolve_timezone_from_supervisor_token(monkeypatch=None):
             tz = resolve_timezone()
             assert tz == ZoneInfo("America/Sao_Paulo")
 
+
+def test_resolve_timezone_from_ha_storage(monkeypatch=None):
+    from unittest.mock import patch, mock_open
+
+    mock_json = '{"data": {"time_zone": "America/Sao_Paulo"}}'
+    with patch("os.path.isfile", side_effect=lambda p: p == "/config/.storage/core.config"):
+        with patch("builtins.open", mock_open(read_data=mock_json)):
+            tz = resolve_timezone()
+            assert tz == ZoneInfo("America/Sao_Paulo")
+
+

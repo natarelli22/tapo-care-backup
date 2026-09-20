@@ -1,6 +1,6 @@
 name: "Tapo Care Backup"
 description: "Automatically backup Tapo Care cloud recordings, convert to MP4 and generate thumbnails"
-version: "1.1.4"
+version: "1.1.5"
 slug: "tapo_care_backup"
 init: false
 homeassistant_api: true
@@ -12,6 +12,8 @@ arch:
   - armv7
   - i386
 map:
+  - type: config
+    read_only: true
   - type: media
     read_only: false
   - type: share

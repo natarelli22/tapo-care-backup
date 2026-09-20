@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -e
 
+# Load s6 container environment variables if present
+for s6_dir in /var/run/s6/container_environment /run/s6/container_environment; do
+    if [ -d "$s6_dir" ]; then
+        for env_file in "$s6_dir"/*; do
+            if [ -f "$env_file" ]; then
+                var_name=$(basename "$env_file")
+                if [ -z "${!var_name}" ]; then
+                    export "$var_name"="$(cat "$env_file")"
+                fi
+            fi
+        done
+    fi
+done
+
 CONFIG_PATH="/data/options.json"
 
 if [ ! -f "$CONFIG_PATH" ]; then
@@ -19,9 +33,28 @@ DEFAULT_PATH=$(jq -r '.default_backup_path // "/media/tapo_care"' "$CONFIG_PATH"
 CAMERAS_JSON=$(jq -c '.cameras // []' "$CONFIG_PATH")
 
 # Detect Home Assistant timezone:
-# 1. Query Home Assistant Core / Supervisor API using SUPERVISOR_TOKEN
 TIMEZONE=""
-if [ -n "$SUPERVISOR_TOKEN" ]; then
+
+# 1. Direct read from Home Assistant Core storage (/config/.storage/core.config)
+if [ -f "/config/.storage/core.config" ]; then
+    HA_STORAGE_TZ=$(jq -r '.data.time_zone // empty' /config/.storage/core.config 2>/dev/null || true)
+    if [ -n "$HA_STORAGE_TZ" ] && [ "$HA_STORAGE_TZ" != "null" ]; then
+        echo "[INFO] Detected timezone from Home Assistant storage: $HA_STORAGE_TZ"
+        TIMEZONE="$HA_STORAGE_TZ"
+    fi
+fi
+
+# 2. Check /config/configuration.yaml if present
+if [ -z "$TIMEZONE" ] && [ -f "/config/configuration.yaml" ]; then
+    HA_YAML_TZ=$(grep -E '^[[:space:]]*time_zone:' /config/configuration.yaml 2>/dev/null | awk -F: '{gsub(/[" \r\n]/,"",$2); print $2}' || true)
+    if [ -n "$HA_YAML_TZ" ]; then
+        echo "[INFO] Detected timezone from configuration.yaml: $HA_YAML_TZ"
+        TIMEZONE="$HA_YAML_TZ"
+    fi
+fi
+
+# 3. Query Home Assistant Core / Supervisor API using SUPERVISOR_TOKEN
+if [ -z "$TIMEZONE" ] && [ -n "$SUPERVISOR_TOKEN" ]; then
     echo "[INFO] Fetching configured timezone from Home Assistant Core API..."
     HA_TZ=$(curl -s -f -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" http://supervisor/core/api/config 2>/dev/null | jq -r '.time_zone // empty' 2>/dev/null || true)
     if [ -n "$HA_TZ" ] && [ "$HA_TZ" != "null" ]; then
