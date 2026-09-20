@@ -1,0 +1,40 @@
+name: "Tapo Care Backup"
+description: "Automatically backup Tapo Care cloud recordings, convert to MP4 and generate thumbnails"
+version: "1.1.2"
+slug: "tapo_care_backup"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+map:
+  - type: media
+    read_only: false
+  - type: share
+    read_only: false
+options:
+  email: ""
+  password: ""
+  days: 1
+  interval_minutes: 15
+  timezone: "America/Sao_Paulo"
+  to_mp4: true
+  generate_thumb: true
+  date_subfolders: true
+  default_backup_path: "/media/tapo_care"
+  cameras: []
+schema:
+  email: email
+  password: password
+  days: int
+  interval_minutes: int
+  timezone: str
+  to_mp4: bool
+  generate_thumb: bool
+  date_subfolders: bool
+  default_backup_path: str
+  cameras:
+    - name: str
+      path: str

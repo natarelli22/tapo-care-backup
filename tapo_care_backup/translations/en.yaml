@@ -1,0 +1,31 @@
+configuration:
+  email:
+    name: "Tapo Email"
+    description: "Your TP-Link / Tapo account email address."
+  password:
+    name: "Tapo Password"
+    description: "Your TP-Link / Tapo account password."
+  days:
+    name: "Days to Backup"
+    description: "Number of past days to check for recordings, plus today."
+  interval_minutes:
+    name: "Check Interval (Minutes)"
+    description: "How often to check for new recordings in the cloud."
+  timezone:
+    name: "Timezone"
+    description: "Timezone name used for date boundaries (e.g. America/Sao_Paulo)."
+  to_mp4:
+    name: "Convert to MP4"
+    description: "Automatically convert downloaded .ts files to web-compatible .mp4 and delete raw .ts files."
+  generate_thumb:
+    name: "Generate Thumbnails"
+    description: "Extract the first video frame as a JPEG thumbnail and save in the thumbs folder."
+  date_subfolders:
+    name: "Date Subfolders"
+    description: "Organize recordings into YYYY-MM-DD subfolders inside videos and thumbs."
+  default_backup_path:
+    name: "Default Backup Path"
+    description: "Base folder where cameras without a custom path will be saved (default: /media/tapo_care)."
+  cameras:
+    name: "Custom Camera Paths"
+    description: "Define custom destination path per camera. Inside each location, videos and thumbs folders will be created."

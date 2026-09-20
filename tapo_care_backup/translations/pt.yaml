@@ -1,0 +1,31 @@
+configuration:
+  email:
+    name: "Email do Tapo"
+    description: "Email da sua conta TP-Link / Tapo."
+  password:
+    name: "Senha do Tapo"
+    description: "Senha da sua conta TP-Link / Tapo."
+  days:
+    name: "Dias para Backup"
+    description: "Quantidade de dias anteriores para sincronizar, além do dia atual (ex: 1 busca ontem e hoje)."
+  interval_minutes:
+    name: "Intervalo de Checagem (Minutos)"
+    description: "De quantos em quantos minutos o add-on busca novas gravações na nuvem."
+  timezone:
+    name: "Fuso Horário"
+    description: "Fuso horário das gravações (ex: America/Sao_Paulo)."
+  to_mp4:
+    name: "Converter para MP4"
+    description: "Converter automaticamente arquivos .ts para .mp4 compatível com navegadores e apagar os .ts."
+  generate_thumb:
+    name: "Gerar Miniaturas (Thumbs)"
+    description: "Extrair o primeiro frame de cada vídeo como imagem JPEG e salvar na pasta thumbs."
+  date_subfolders:
+    name: "Subpastas por Data"
+    description: "Organizar em subpastas YYYY-MM-DD dentro de videos e thumbs (recomendado para organizar gravações)."
+  default_backup_path:
+    name: "Caminho Padrão de Backup"
+    description: "Pasta base onde as câmeras sem caminho personalizado serão salvas (padrão: /media/tapo_care)."
+  cameras:
+    name: "Pastas Personalizadas por Câmera"
+    description: "Defina onde o backup de cada câmera será salvo. Dentro desse local serão criadas as pastas videos e thumbs."
