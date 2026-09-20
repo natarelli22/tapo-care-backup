@@ -11,9 +11,6 @@ configuration:
   interval_minutes:
     name: "Check Interval (Minutes)"
     description: "How often to check for new recordings in the cloud."
-  timezone:
-    name: "Timezone"
-    description: "Timezone name used for date boundaries (e.g. America/Sao_Paulo)."
   to_mp4:
     name: "Convert to MP4"
     description: "Automatically convert downloaded .ts files to web-compatible .mp4 and delete raw .ts files."

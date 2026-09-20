@@ -7,6 +7,7 @@ Local Home Assistant OS Add-on that periodically downloads event recordings from
 - **Automatic MP4 Conversion**: Remuxes MPEG-TS video losslessly and converts 8000Hz audio to AAC so videos play instantly in all web browsers and Home Assistant apps.
 - **Zero Duplicate Downloads**: Detects existing `.mp4` files and skips already downloaded clips.
 - **Disk Cleanup**: Immediately removes raw `.ts` files after conversion to save space.
+- **Automatic Timezone Sync**: Automatically discovers and follows Home Assistant's configured timezone, ensuring date boundaries and daily midnight rollovers match your local Home Assistant time.
 - **Native HA Media Integration**: Seamlessly integrates with the rewritten `HomeAssistant-Tapo-Control` media source to show recordings in `Media -> Tapo: Recordings`.
 
 ## Installation

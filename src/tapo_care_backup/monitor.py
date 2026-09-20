@@ -47,7 +47,7 @@ class WatchPaths:
 @dataclass(frozen=True)
 class WatchSettings:
     days: int = 1
-    timezone_name: str = "Asia/Tokyo"
+    timezone_name: str | None = None
     page_size: int = 500
     max_attachments: int = 3
     bootstrap_mode: str = "mark_seen"
@@ -196,7 +196,7 @@ def settings_from_env() -> WatchSettings:
     notify_event_types = None if grid_attachments else parse_notify_event_types(os.environ.get("TAPO_WATCH_NOTIFY_EVENT_TYPES"))
     return WatchSettings(
         days=int(os.environ.get("TAPO_WATCH_DAYS", "1")),
-        timezone_name=os.environ.get("TAPO_WATCH_TIMEZONE", "Asia/Tokyo"),
+        timezone_name=os.environ.get("TAPO_WATCH_TIMEZONE") or None,
         page_size=int(os.environ.get("TAPO_WATCH_PAGE_SIZE", "500")),
         max_attachments=int(os.environ.get("TAPO_WATCH_MAX_ATTACHMENTS", "3")),
         bootstrap_mode=bootstrap_mode,

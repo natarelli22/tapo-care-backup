@@ -11,9 +11,6 @@ configuration:
   interval_minutes:
     name: "Intervalo de Checagem (Minutos)"
     description: "De quantos em quantos minutos o add-on busca novas gravações na nuvem."
-  timezone:
-    name: "Fuso Horário"
-    description: "Fuso horário das gravações (ex: America/Sao_Paulo)."
   to_mp4:
     name: "Converter para MP4"
     description: "Converter automaticamente arquivos .ts para .mp4 compatível com navegadores e apagar os .ts."

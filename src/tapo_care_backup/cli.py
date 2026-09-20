@@ -172,7 +172,7 @@ def _parser() -> argparse.ArgumentParser:
 def _add_video_filters(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--device-id", help="Only use a specific Tapo deviceId")
     parser.add_argument("--days", type=int, default=1, help="Number of previous local days to include, plus today")
-    parser.add_argument("--timezone", default="Asia/Tokyo", help="Timezone used for date boundaries")
+    parser.add_argument("--timezone", default=None, help="Timezone used for date boundaries (defaults to system / Home Assistant timezone)")
     parser.add_argument("--page-size", type=int, default=3000)
 
 

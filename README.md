@@ -79,13 +79,15 @@ uv run tapo-care-backup devices
 ### 4. List cloud clips
 
 ```bash
-uv run tapo-care-backup list --days 7 --timezone Asia/Tokyo
+uv run tapo-care-backup list --days 7
 ```
+
+`--timezone` is optional and defaults to the system / Home Assistant timezone.
 
 ### 5. Download cloud clips
 
 ```bash
-uv run tapo-care-backup download --days 7 --timezone Asia/Tokyo --path ~/TapoBackups
+uv run tapo-care-backup download --days 7 --path ~/TapoBackups
 ```
 
 Existing files are skipped by default. To re-download:

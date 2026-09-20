@@ -12,12 +12,29 @@ EMAIL=$(jq -r '.email // empty' "$CONFIG_PATH")
 PASSWORD=$(jq -r '.password // empty' "$CONFIG_PATH")
 DAYS=$(jq -r '.days // 1' "$CONFIG_PATH")
 INTERVAL=$(jq -r '.interval_minutes // 15' "$CONFIG_PATH")
-TIMEZONE=$(jq -r '.timezone // "America/Sao_Paulo"' "$CONFIG_PATH")
 TO_MP4=$(jq -r '.to_mp4 // true' "$CONFIG_PATH")
 GENERATE_THUMB=$(jq -r '.generate_thumb // true' "$CONFIG_PATH")
 DATE_SUBFOLDERS=$(jq -r '.date_subfolders // true' "$CONFIG_PATH")
 DEFAULT_PATH=$(jq -r '.default_backup_path // "/media/tapo_care"' "$CONFIG_PATH")
 CAMERAS_JSON=$(jq -c '.cameras // []' "$CONFIG_PATH")
+
+# Detect Home Assistant timezone from container environment (Supervisor passes TZ)
+TIMEZONE="${TZ}"
+if [ -z "$TIMEZONE" ] && [ -f /etc/timezone ]; then
+    TIMEZONE=$(cat /etc/timezone | tr -d ' \r\n')
+fi
+if [ -z "$TIMEZONE" ] && [ -L /etc/localtime ]; then
+    REAL_TZ=$(readlink -f /etc/localtime 2>/dev/null || true)
+    if [[ "$REAL_TZ" == *"zoneinfo/"* ]]; then
+        TIMEZONE="${REAL_TZ#*zoneinfo/}"
+    fi
+fi
+if [ -z "$TIMEZONE" ]; then
+    TIMEZONE=$(jq -r '.timezone // empty' "$CONFIG_PATH" 2>/dev/null || true)
+fi
+if [ -z "$TIMEZONE" ]; then
+    TIMEZONE="UTC"
+fi
 
 if [ -z "$EMAIL" ] || [ -z "$PASSWORD" ]; then
     echo "[ERROR] Tapo email and password must be configured in Add-on Configuration!"
@@ -29,7 +46,7 @@ echo " Starting Tapo Care Backup Add-on"
 echo " Account:              $EMAIL"
 echo " Days to sync:         $DAYS"
 echo " Sync interval:        ${INTERVAL} minutes"
-echo " Timezone:             $TIMEZONE"
+echo " Timezone (from HA):   $TIMEZONE"
 echo " Convert to MP4:       $TO_MP4"
 echo " Generate thumbnails:  $GENERATE_THUMB"
 echo " Date subfolders:      $DATE_SUBFOLDERS"
@@ -41,13 +58,11 @@ export TAPO_USERNAME="$EMAIL"
 export TAPO_PASSWORD="$PASSWORD"
 export TAPO_CARE_BACKUP_CONFIG_DIR="/data"
 
-# Set system timezone inside the container so logs and date match the user's timezone
-if [ -n "$TIMEZONE" ]; then
-    export TZ="$TIMEZONE"
-    if [ -f "/usr/share/zoneinfo/$TIMEZONE" ]; then
-        ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime 2>/dev/null || true
-        echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
-    fi
+# Set system timezone inside the container so logs and date match Home Assistant
+export TZ="$TIMEZONE"
+if [ -f "/usr/share/zoneinfo/$TIMEZONE" ]; then
+    ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime 2>/dev/null || true
+    echo "$TIMEZONE" > /etc/timezone 2>/dev/null || true
 fi
 
 mkdir -p "$DEFAULT_PATH"
