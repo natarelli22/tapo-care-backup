@@ -162,6 +162,8 @@ def _parser() -> argparse.ArgumentParser:
     download.add_argument("--no-thumb", dest="generate_thumb", action="store_false", help="Do not generate thumbnails")
     download.add_argument("--date-subfolders", action="store_true", default=True, help="Organize videos and thumbs in YYYY-MM-DD subfolders")
     download.add_argument("--no-date-subfolders", dest="date_subfolders", action="store_false", help="Save videos and thumbs flat in videos/ and thumbs/ without date subfolders")
+    download.add_argument("--osd-sync", action="store_true", default=True, help="Detect camera pre-roll via OSD timestamp and synchronize filenames")
+    download.add_argument("--no-osd-sync", dest="osd_sync", action="store_false", help="Disable OSD pre-roll synchronization")
 
     doctor = sub.add_parser("doctor", help="Probe Tapo Care API endpoint without credentials")
     doctor.add_argument("--region", default="aps1")
@@ -311,12 +313,18 @@ def cmd_download(args: argparse.Namespace) -> int:
                 thumb_path = t_dir / f"{file_stem}.jpg"
 
                 stem_prefix = file_stem.rsplit("_", 1)[0]
+                url_hash = file_stem.rsplit("_", 1)[1] if "_" in file_stem else ""
 
                 if not args.overwrite:
                     existing_mp4_matches = sorted([
                         f for f in v_dir.glob(f"{stem_prefix}_*.mp4")
                         if f.is_file() and f.stat().st_size > 0
                     ])
+                    if not existing_mp4_matches and url_hash:
+                        existing_mp4_matches = sorted([
+                            f for f in v_dir.glob(f"*_{url_hash}.mp4")
+                            if f.is_file() and f.stat().st_size > 0
+                        ])
                     if mp4_path and mp4_path.exists() and mp4_path.stat().st_size > 0 and mp4_path not in existing_mp4_matches:
                         existing_mp4_matches.append(mp4_path)
 
@@ -339,13 +347,30 @@ def cmd_download(args: argparse.Namespace) -> int:
                         f for f in v_dir.glob(f"{stem_prefix}_*.ts")
                         if f.is_file() and f.stat().st_size > 0
                     ]
+                    if not existing_ts_matches and url_hash:
+                        existing_ts_matches = sorted([
+                            f for f in v_dir.glob(f"*_{url_hash}.ts")
+                            if f.is_file() and f.stat().st_size > 0
+                        ])
                     if existing_ts_matches:
                         if args.to_mp4:
                             target_ts = existing_ts_matches[0]
                             target_mp4 = target_ts.with_suffix(".mp4")
                             if _convert_ts_to_mp4(target_ts, target_mp4):
+                                cur_thumb = t_dir / f"{target_mp4.stem}.jpg"
                                 if args.generate_thumb:
-                                    _generate_thumbnail(target_mp4, t_dir / f"{target_mp4.stem}.jpg")
+                                    _generate_thumbnail(target_mp4, cur_thumb)
+                                if getattr(args, "osd_sync", True):
+                                    try:
+                                        from tapo_care_backup.osd_sync import sync_recording_filenames
+                                        target_mp4, _, preroll = sync_recording_filenames(
+                                            target_mp4,
+                                            cur_thumb if (args.generate_thumb and cur_thumb.exists()) else None,
+                                        )
+                                        if preroll:
+                                            print(f"osd sync: preroll={preroll}s -> {target_mp4.name}")
+                                    except Exception as exc:
+                                        print(f"Warning: osd sync error for {target_mp4.name}: {exc}")
                             for dup_ts in existing_ts_matches[1:]:
                                 dup_ts.unlink(missing_ok=True)
                             skipped += 1
@@ -368,8 +393,20 @@ def cmd_download(args: argparse.Namespace) -> int:
                 if args.generate_thumb and target_video.exists():
                     _generate_thumbnail(target_video, thumb_path)
 
+                if getattr(args, "osd_sync", True) and target_video.exists():
+                    try:
+                        from tapo_care_backup.osd_sync import sync_recording_filenames
+                        target_video, thumb_path, preroll = sync_recording_filenames(
+                            target_video,
+                            thumb_path if (args.generate_thumb and thumb_path and thumb_path.exists()) else None,
+                        )
+                        if preroll:
+                            print(f"osd sync: preroll={preroll}s -> {target_video.name}")
+                    except Exception as exc:
+                        print(f"Warning: osd sync error for {target_video.name}: {exc}")
+
                 downloaded += 1
-                thumb_info = f" (thumb: {thumb_path.name})" if args.generate_thumb and thumb_path.exists() else ""
+                thumb_info = f" (thumb: {thumb_path.name})" if args.generate_thumb and thumb_path and thumb_path.exists() else ""
                 print(f"downloaded & processed {target_video.name}{thumb_info}")
 
     print(f"done: downloaded={downloaded} skipped={skipped}")

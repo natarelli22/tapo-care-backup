@@ -9,6 +9,8 @@ authors = [{ name = "Kan Ninomiya" }]
 dependencies = [
   "requests>=2.32.0",
   "pycryptodome>=3.20.0",
+  "pillow>=10.0.0",
+  "numpy>=1.24.0",
 ]
 
 [project.scripts]

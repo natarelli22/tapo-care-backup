@@ -10,6 +10,8 @@ RUN apk add --no-cache \
     py3-pip \
     py3-requests \
     py3-pycryptodome \
+    py3-pillow \
+    py3-numpy \
     py3-wheel \
     ffmpeg \
     bash \
