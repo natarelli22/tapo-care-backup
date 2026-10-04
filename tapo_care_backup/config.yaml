@@ -1,16 +1,13 @@
 name: "Tapo Care Backup"
 description: "Automatically backup Tapo Care cloud recordings, convert to MP4 and generate thumbnails"
-version: "1.1.6"
+version: "1.1.7"
 slug: "tapo_care_backup"
 init: false
 arch:
   - aarch64
   - amd64
-  - armhf
-  - armv7
-  - i386
 map:
-  - type: config
+  - type: homeassistant_config
     read_only: true
   - type: media
     read_only: false
@@ -24,6 +21,7 @@ options:
   to_mp4: true
   generate_thumb: true
   date_subfolders: true
+  osd_sync: true
   default_backup_path: "/media/tapo_care"
   cameras: []
 schema:
@@ -34,6 +32,7 @@ schema:
   to_mp4: bool
   generate_thumb: bool
   date_subfolders: bool
+  osd_sync: bool
   default_backup_path: str
   cameras:
     - name: str

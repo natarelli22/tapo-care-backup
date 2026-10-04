@@ -31,22 +31,29 @@ GENERATE_THUMB=$(jq -r '.generate_thumb // true' "$CONFIG_PATH")
 DATE_SUBFOLDERS=$(jq -r '.date_subfolders // true' "$CONFIG_PATH")
 DEFAULT_PATH=$(jq -r '.default_backup_path // "/media/tapo_care"' "$CONFIG_PATH")
 CAMERAS_JSON=$(jq -c '.cameras // []' "$CONFIG_PATH")
+OSD_SYNC=$(jq -r '.osd_sync // true' "$CONFIG_PATH")
+
+# Detect Home Assistant config folder (supports new 'homeassistant_config' -> /homeassistant and legacy 'config' -> /config)
+HA_CONFIG_DIR="/homeassistant"
+if [ ! -d "$HA_CONFIG_DIR" ] && [ -d "/config" ]; then
+    HA_CONFIG_DIR="/config"
+fi
 
 # Detect Home Assistant timezone:
 TIMEZONE=""
 
-# 1. Direct read from Home Assistant Core storage (/config/.storage/core.config)
-if [ -f "/config/.storage/core.config" ]; then
-    HA_STORAGE_TZ=$(jq -r '.data.time_zone // empty' /config/.storage/core.config 2>/dev/null || true)
+# 1. Direct read from Home Assistant Core storage ($HA_CONFIG_DIR/.storage/core.config)
+if [ -f "$HA_CONFIG_DIR/.storage/core.config" ]; then
+    HA_STORAGE_TZ=$(jq -r '.data.time_zone // empty' "$HA_CONFIG_DIR/.storage/core.config" 2>/dev/null || true)
     if [ -n "$HA_STORAGE_TZ" ] && [ "$HA_STORAGE_TZ" != "null" ]; then
         echo "[INFO] Detected timezone from Home Assistant storage: $HA_STORAGE_TZ"
         TIMEZONE="$HA_STORAGE_TZ"
     fi
 fi
 
-# 2. Check /config/configuration.yaml if present
-if [ -z "$TIMEZONE" ] && [ -f "/config/configuration.yaml" ]; then
-    HA_YAML_TZ=$(grep -E '^[[:space:]]*time_zone:' /config/configuration.yaml 2>/dev/null | awk -F: '{gsub(/[" \r\n]/,"",$2); print $2}' || true)
+# 2. Check $HA_CONFIG_DIR/configuration.yaml if present
+if [ -z "$TIMEZONE" ] && [ -f "$HA_CONFIG_DIR/configuration.yaml" ]; then
+    HA_YAML_TZ=$(grep -E '^[[:space:]]*time_zone:' "$HA_CONFIG_DIR/configuration.yaml" 2>/dev/null | awk -F: '{gsub(/[" \r\n]/,"",$2); print $2}' || true)
     if [ -n "$HA_YAML_TZ" ]; then
         echo "[INFO] Detected timezone from configuration.yaml: $HA_YAML_TZ"
         TIMEZONE="$HA_YAML_TZ"
@@ -107,6 +114,7 @@ echo " Timezone (from HA):   $TIMEZONE"
 echo " Convert to MP4:       $TO_MP4"
 echo " Generate thumbnails:  $GENERATE_THUMB"
 echo " Date subfolders:      $DATE_SUBFOLDERS"
+echo " OSD Pre-roll Sync:    $OSD_SYNC"
 echo " Default backup path:  $DEFAULT_PATH"
 echo " Custom camera paths:  $CAMERAS_JSON"
 echo "===================================================="
@@ -139,6 +147,11 @@ if [ "$DATE_SUBFOLDERS" = "false" ]; then
     DATE_FLAG="--no-date-subfolders"
 fi
 
+OSD_FLAG=""
+if [ "$OSD_SYNC" = "false" ]; then
+    OSD_FLAG="--no-osd-sync"
+fi
+
 # Initial login / session validation
 echo "[INFO] Verifying session with Tapo Cloud..."
 tapo-care-backup --config /data/session.json login || {
@@ -162,7 +175,8 @@ while true; do
         --camera-paths "$CAMERAS_JSON" \
         $MP4_FLAG \
         $THUMB_FLAG \
-        $DATE_FLAG; then
+        $DATE_FLAG \
+        $OSD_FLAG; then
         
         echo "[WARN] Download error encountered. Attempting to refresh login session..."
         tapo-care-backup --config /data/session.json login || true
